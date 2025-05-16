@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>프로페셔널 VR 인테리어</title>
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <!-- A-Frame 컴포넌트들을 먼저 로드 -->
+  <script src="https://unpkg.com/aframe-grab-move-controls/dist/aframe-grab-move-controls.min.js"></script>
+  <script src="https://unpkg.com/aframe-outline@1.1.0/dist/aframe-outline.min.js"></script>
+  <script src="https://unpkg.com/aframe-screenshot-component/dist/aframe-screenshot-component.min.js"></script>
+  <script src="https://unpkg.com/aframe-orbit-controls-component@1.4.0/dist/aframe-orbit-controls-component.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    #ui {
+      position: absolute; top: 10px; left: 10px; z-index: 10;
+      background: rgba(255,255,255,0.98); padding: 16px; border-radius: 12px;
+      font-size: 15px; box-shadow: 0 2px 8px #0002; min-width: 320px;
+      transition: max-height 0.4s cubic-bezier(.4,2,.6,1), opacity 0.3s, width 0.3s, min-width 0.3s, box-shadow 0.3s, background 0.3s;
+      overflow: hidden;
+      max-height: 1200px;
+      opacity: 1;
+    }
+    #ui.collapsed {
+      max-height: 60px;
+      min-width: 60px;
+      width: 60px;
+      opacity: 0.7;
+      padding: 8px 8px 8px 8px;
+      box-shadow: 0 4px 24px #0003;
+      background: rgba(240,245,250,0.95);
+    }
+    #ui .collapse-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 1001;
+    }
+    #ui.collapsed .collapse-btn {
+      position: fixed;
+      left: 12px;
+      top: 12px;
+      right: auto;
+      box-shadow: 0 4px 24px #007bff55, 0 1.5px 8px #0002;
+      background: #007bff;
+      border: 2.5px solid #fff;
+      width: 54px;
+      height: 54px;
+      font-size: 32px;
+      transition: box-shadow 0.2s, background 0.2s, width 0.2s, height 0.2s, left 0.2s, top 0.2s;
+      z-index: 2000;
+    }
+    #ui.collapsed .collapse-btn:hover {
+      background: #0056b3;
+      box-shadow: 0 6px 32px #0056b3aa, 0 2px 12px #0003;
+    }
+    #ui .collapse-btn .arrow {
+      display: inline-block;
+      transition: transform 0.4s cubic-bezier(.4,2,.6,1);
+      color: #fff;
+      font-size: 28px;
+    }
+    #ui.collapsed .collapse-btn .arrow {
+      transform: rotate(180deg);
+    }
+    #ui.collapsed > *:not(.collapse-btn) {
+      display: none !important;
+    }
+    #furniture-list, #room-list { 
+      display: flex; 
+      gap: 12px; 
+      margin-bottom: 16px; 
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .thumb { 
+      width: 64px; 
+      height: 64px; 
+      border: 2px solid #ccc; 
+      border-radius: 8px; 
+      cursor: pointer; 
+      object-fit: cover; 
+      background: #f8f8f8; 
+      transition: all 0.2s;
+      padding: 4px;
+    }
+    .thumb:hover { 
+      border: 2px solid #007bff; 
+      transform: scale(1.05);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .category-label {
+      font-size: 14px;
+      color: #666;
+      font-weight: bold;
+      margin-right: 8px;
+      min-width: 60px;
+    }
+    #scene-btns button, #tools button { margin-right: 4px; }
+    .slider-label { font-size: 13px; margin-right: 4px; }
+    #selected-info { margin: 8px 0 4px 0; font-size: 14px; color: #007bff; }
+    #colorPicker { width: 40px; height: 24px; vertical-align: middle; }
+    #upload { margin-top: 8px; }
+    #modal { display:none; position:fixed; left:0; top:0; width:100vw; height:100vh; background:rgba(0,0,0,0.4); z-index:100; align-items:center; justify-content:center; }
+    #modalContent { background:#fff; padding:24px; border-radius:12px; min-width:300px; }
+    #modal input[type="text"] { width: 80%; }
+    a-scene {
+      position: absolute;
+      left: 0; top: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <button class="collapse-btn" id="collapseBtn" title="툴바 접기/펼치기 (펼치려면 클릭)" onclick="toggleToolbar()"><span class="arrow">◀</span></button>
+    <div id="room-list">
+      <span class="category-label">방 구조</span>
+      <button class="thumb" title="벽" onclick="addWall()" style="font-size:32px;">🧱<br><span style='font-size:13px;'>벽</span></button>
+      <button class="thumb" title="창문" onclick="addWindow()" style="font-size:32px;">🪟<br><span style='font-size:13px;'>창문</span></button>
+      <button class="thumb" title="문" onclick="addDoor()" style="font-size:32px;">🚪<br><span style='font-size:13px;'>문</span></button>
+    </div>
+    <div id="furniture-list">
+      <span class="category-label">가구</span>
+      <button class="thumb" title="의자" onclick="addFurniture('chair')" style="font-size:32px;">🪑<br><span style='font-size:13px;'>의자</span></button>
+      <button class="thumb" title="테이블" onclick="addFurniture('table')" style="font-size:32px;">🍽️<br><span style='font-size:13px;'>테이블</span></button>
+      <button class="thumb" title="소파" onclick="addFurniture('sofa')" style="font-size:32px;">🛋️<br><span style='font-size:13px;'>소파</span></button>
+    </div>
+    <div id="upload">
+      <label>3D 모델 업로드: <input type="file" id="modelUpload" accept=".glb,.gltf" onchange="uploadModel(event)"></label>
+    </div>
+    <div id="selected-info"></div>
+    <div>
+      <span class="slider-label">크기:</span>
+      <input type="range" id="scaleSlider" min="0.5" max="2" step="0.01" value="1" oninput="scaleSelected(this.value)" title="크기 조절">
+      <span id="scaleValue">1.00</span>
+      <span class="slider-label" style="margin-left:10px;">높이:</span>
+      <input type="range" id="heightSlider" min="0" max="2" step="0.01" value="0" oninput="heightSelected(this.value)" title="높이 조절">
+      <span id="heightValue">0.00</span>
+      <span class="slider-label" style="margin-left:10px;">회전:</span>
+      <input type="range" id="rotSlider" min="0" max="360" step="1" value="0" oninput="rotateSelected(this.value)" title="회전 조절">
+      <span id="rotValue">0°</span>
+    </div>
+    <div style="margin-top:8px;">
+      <span class="slider-label">색상:</span>
+      <input type="color" id="colorPicker" value="#ffffff" onchange="colorSelected(this.value)" title="색상 선택">
+      <span class="slider-label" style="margin-left:10px;">투명도:</span>
+      <input type="range" id="opacitySlider" min="0.1" max="1" step="0.01" value="1" oninput="opacitySelected(this.value)" title="투명도 조절">
+      <span id="opacityValue">1.00</span>
+      <button onclick="cloneSelected()">복제</button>
+      <button onclick="removeSelected()">선택 삭제</button>
+      <button onclick="removeAll()">전체 삭제</button>
+    </div>
+    <div style="margin-top:8px;">
+      <span class="slider-label">회전(X):</span>
+      <input type="range" id="rotXSlider" min="0" max="360" step="1" value="0" oninput="rotateXSelected(this.value)" title="X축 회전">
+      <span id="rotXValue">0°</span>
+      <span class="slider-label" style="margin-left:10px;">회전(Z):</span>
+      <input type="range" id="rotZSlider" min="0" max="360" step="1" value="0" oninput="rotateZSelected(this.value)" title="Z축 회전">
+      <span id="rotZValue">0°</span>
+    </div>
+    <div style="margin-top:8px;">
+      <span class="slider-label">바닥 텍스처:</span>
+      <select id="floorTexture" title="바닥 텍스처 선택" onchange="changeFloorTexture(this.value)">
+        <option value="#eee">기본</option>
+        <option value="https://cdn.pixabay.com/photo/2017/01/06/19/15/soapstone-1958800_1280.jpg">대리석</option>
+        <option value="https://cdn.pixabay.com/photo/2016/11/29/09/32/abstract-1867006_1280.jpg">우드</option>
+        <option value="https://cdn.pixabay.com/photo/2017/08/30/07/52/texture-2690621_1280.jpg">카펫</option>
+      </select>
+      <span class="slider-label" style="margin-left:10px;">벽 텍스처:</span>
+      <select id="wallTexture" title="벽 텍스처 선택" onchange="changeWallTexture(this.value)">
+        <option value="#b0b0b0">기본</option>
+        <option value="https://cdn.pixabay.com/photo/2016/11/29/09/32/abstract-1867006_1280.jpg">우드</option>
+        <option value="https://cdn.pixabay.com/photo/2017/08/30/07/52/texture-2690621_1280.jpg">카펫</option>
+        <option value="https://cdn.pixabay.com/photo/2017/01/06/19/15/soapstone-1958800_1280.jpg">대리석</option>
+      </select>
+    </div>
+    <div style="margin-top:8px;">
+      <span class="slider-label">조명색:</span>
+      <input type="color" id="lightColor" value="#ffffff" onchange="changeLightColor(this.value)">
+      <span class="slider-label" style="margin-left:10px;">조명 밝기:</span>
+      <input type="range" id="lightIntensity" min="0" max="2" step="0.01" value="0.7" oninput="changeLightIntensity(this.value)">
+      <span id="lightIntensityValue">0.70</span>
+    </div>
+    <div style="margin-top:8px;">
+      <button onclick="undo()">실행 취소</button>
+      <button onclick="redo()">다시 실행</button>
+    </div>
+    <div id="tools" style="margin-top:8px;">
+      <button onclick="editName()">이름 변경</button>
+      <button onclick="toggleLock()">잠금/해제</button>
+      <button onclick="moveLayer('up')">앞으로</button>
+      <button onclick="moveLayer('down')">뒤로</button>
+      <button onclick="captureScene()">이미지 저장</button>
+    </div>
+    <div id="scene-btns" style="margin-top:8px;">
+      <button onclick="saveScene()">저장</button>
+      <button onclick="loadScene()">불러오기</button>
+      <button onclick="setTopView()">탑뷰</button>
+      <button onclick="setFirstPerson()">1인칭</button>
+      <button onclick="toggleOrbitCamera()" id="orbitBtn">자유 카메라</button>
+    </div>
+    <div style="margin-top:8px;">
+      <span>VR기기에서 <b>VR 버튼</b>을 누르세요.</span>
+    </div>
+  </div>
+  <!-- 이름 변경 모달 -->
+  <div id="modal">
+    <div id="modalContent">
+      <div>이름 변경: <input type="text" id="nameInput"><button onclick="applyName()">확인</button></div>
+      <div style="margin-top:8px;"><button onclick="closeModal()">닫기</button></div>
+    </div>
+  </div>
+  <a-scene
+    vr-mode-ui="enabled: true"
+    renderer="antialias: true"
+    background="color: #e0e7ef"
+    embedded
+    screenshot="width: 1920; height: 1080"
+  >
+    <a-plane position="0 0 0" rotation="-90 0 0" width="14" height="14" color="#eee" shadow></a-plane>
+    <a-light type="ambient" color="#fff" intensity="0.7"></a-light>
+    <a-light type="directional" color="#fff" intensity="0.7" position="2 5 2"></a-light>
+    <a-entity id="cameraRig">
+      <a-entity id="mainCamera" camera look-controls wasd-controls position="0 1.6 8"></a-entity>
+    </a-entity>
+    <a-entity id="room-root"></a-entity>
+    <a-entity id="furniture-root"></a-entity>
+    <a-entity id="label-root"></a-entity>
+  </a-scene>
+  <script>
+    // DOM이 완전히 로드된 후 실행
+    document.addEventListener('DOMContentLoaded', function() {
+      // A-Frame 씬이 준비되었는지 확인
+      const scene = document.querySelector('a-scene');
+      if (scene.hasLoaded) {
+        initScene();
+      } else {
+        scene.addEventListener('loaded', initScene);
+      }
+    });
+
+    function initScene() {
+      console.log('씬이 초기화되었습니다.');
+      // 초기 카메라 위치 설정
+      setFirstPerson();
+    }
+
+    // 3D 모델 URL (CDN 링크)
+    const models = {
+      chair:  "https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Chair/glTF-Binary/Chair.glb",
+      table:  "https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/CoffeeTable/glTF-Binary/CoffeeTable.glb",
+      sofa:   "https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Sofa/glTF-Binary/Sofa.glb"
+    };
+
+    let selected = null;
+
+    // 가구 추가
+    function addFurniture(type, modelUrl) {
+      const root = document.getElementById('furniture-root');
+      let entity = document.createElement('a-entity');
+      entity.setAttribute('gltf-model', modelUrl || models[type]);
+      entity.setAttribute('position', `${Math.random()*2-1} 0 ${Math.random()*2-1}`);
+      entity.setAttribute('scale', '1 1 1');
+      entity.setAttribute('class', 'furniture');
+      entity.setAttribute('shadow', 'cast: true; receive: true');
+      entity.setAttribute('grab-move-controls', '');
+      entity.setAttribute('clickable', '');
+      entity.setAttribute('data-name', type);
+      entity.setAttribute('data-locked', 'false');
+      entity.addEventListener('click', function (evt) {
+        selectFurniture(entity);
+        evt.stopPropagation();
+      });
+      // 모델 로딩 성공/실패 핸들러 추가
+      entity.addEventListener('model-loaded', function() {
+        console.log('모델 로딩 성공:', modelUrl || models[type]);
+      });
+      entity.addEventListener('model-error', function(e) {
+        console.error('모델 로딩 실패:', modelUrl || models[type], e);
+        alert('3D 모델을 불러오지 못했습니다. 네트워크 또는 URL을 확인하세요.');
+        entity.parentNode && entity.parentNode.removeChild(entity);
+      });
+      root.appendChild(entity);
+      selectFurniture(entity);
+    }
+
+    // 3D 모델 업로드
+    function uploadModel(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      addFurniture('사용자모델', url);
+    }
+
+    // 벽/창문/문 추가
+    function addWall() { addRoomElement('벽', 'box', '#b0b0b0', '4 1 0.1', '0 1 0'); }
+    function addWindow() { addRoomElement('창문', 'box', '#aeefff', '1.5 1 0.1', '0 1 0', 0.5); }
+    function addDoor() { addRoomElement('문', 'box', '#deb887', '1 2 0.1', '0 1 0', 0.2); }
+    function addRoomElement(name, primitive, color, scale, pos, opacity=1) {
+      const root = document.getElementById('room-root');
+      let entity = document.createElement('a-entity');
+      entity.setAttribute('geometry', `primitive: ${primitive};`);
+      entity.setAttribute('material', `color: ${color}; opacity: ${opacity}; transparent: ${opacity<1}`);
+      entity.setAttribute('scale', scale);
+      entity.setAttribute('position', pos);
+      entity.setAttribute('class', 'room');
+      entity.setAttribute('grab-move-controls', '');
+      entity.setAttribute('clickable', '');
+      entity.setAttribute('data-name', name);
+      entity.setAttribute('data-locked', 'false');
+      entity.addEventListener('click', function (evt) {
+        selectFurniture(entity);
+        evt.stopPropagation();
+      });
+      root.appendChild(entity);
+      selectFurniture(entity);
+    }
+
+    // 선택/강조/정보
+    function selectFurniture(entity) {
+      if (selected) {
+        selected.setAttribute('outline', 'enabled: false');
+        // 라벨 숨기기
+        const prevLabel = document.getElementById('label-' + selected.dataset.labelId);
+        if (prevLabel) prevLabel.setAttribute('visible', 'false');
+      }
+      selected = entity;
+      if (selected) {
+        selected.setAttribute('outline', 'enabled: true; color: #007bff; thickness: 0.04');
+        let scale = selected.getAttribute('scale').x;
+        document.getElementById('scaleSlider').value = scale;
+        document.getElementById('scaleValue').innerText = scale.toFixed(2);
+        let y = selected.getAttribute('position').y;
+        document.getElementById('heightSlider').value = y;
+        document.getElementById('heightValue').innerText = y.toFixed(2);
+        let rot = selected.getAttribute('rotation')?.y || 0;
+        document.getElementById('rotSlider').value = rot;
+        document.getElementById('rotValue').innerText = `${rot}°`;
+        let name = selected.getAttribute('data-name') || '가구/구조물';
+        let locked = selected.getAttribute('data-locked') === 'true' ? ' (잠금)' : '';
+        document.getElementById('selected-info').innerText = `선택: ${name}${locked}`;
+        // grab-move-controls 활성/비활성
+        if (selected.getAttribute('data-locked') === 'true') {
+          selected.removeAttribute('grab-move-controls');
+        } else {
+          selected.setAttribute('grab-move-controls', '');
+        }
+        // 라벨 표시
+        showLabel(selected, name);
+        // z-order: 항상 맨 뒤로 이동(앞쪽)
+        let parent = selected.parentNode;
+        parent.appendChild(selected);
+      } else {
+        document.getElementById('selected-info').innerText = '';
+      }
+    }
+
+    // 라벨 표시 함수
+    function showLabel(entity, name) {
+      let labelId = entity.dataset.labelId;
+      if (!labelId) {
+        labelId = Math.random().toString(36).substr(2, 9);
+        entity.dataset.labelId = labelId;
+      }
+      let label = document.getElementById('label-' + labelId);
+      if (!label) {
+        label = document.createElement('a-entity');
+        label.setAttribute('id', 'label-' + labelId);
+        label.setAttribute('text', `value: ${name}; color: #222; align: center; width: 2; side: double;`);
+        label.setAttribute('visible', 'true');
+        document.getElementById('label-root').appendChild(label);
+      } else {
+        label.setAttribute('text', `value: ${name}; color: #222; align: center; width: 2; side: double;`);
+        label.setAttribute('visible', 'true');
+      }
+      // 라벨 위치: 선택된 객체 위에 띄우기
+      let pos = entity.getAttribute('position');
+      let scale = entity.getAttribute('scale');
+      let yOffset = (scale && scale.y ? scale.y : 1) * 1.2;
+      label.setAttribute('position', `${pos.x} ${parseFloat(pos.y) + yOffset} ${pos.z}`);
+    }
+
+    function scaleSelected(val) {
+      if (selected && !isLocked(selected)) {
+        selected.setAttribute('scale', `${val} ${val} ${val}`);
+        document.getElementById('scaleValue').innerText = parseFloat(val).toFixed(2);
+      }
+    }
+    function heightSelected(val) {
+      if (selected && !isLocked(selected)) {
+        let pos = selected.getAttribute('position');
+        selected.setAttribute('position', `${pos.x} ${val} ${pos.z}`);
+        document.getElementById('heightValue').innerText = parseFloat(val).toFixed(2);
+      }
+    }
+    function rotateSelected(val) {
+      if (selected && !isLocked(selected)) {
+        let rot = selected.getAttribute('rotation');
+        selected.setAttribute('rotation', `0 ${val} 0`);
+        document.getElementById('rotValue').innerText = `${val}°`;
+      }
+    }
+    function colorSelected(val) {
+      if (selected && !isLocked(selected)) {
+        if (selected.classList.contains('room')) {
+          selected.setAttribute('material', `color: ${val}; opacity: ${selected.getAttribute('material').opacity || 1}`);
+        } else {
+          selected.setAttribute('material', `color: ${val}`);
+        }
+      }
+    }
+    function cloneSelected() {
+      if (!selected) return;
+      let root = selected.classList.contains('room') ? document.getElementById('room-root') : document.getElementById('furniture-root');
+      let clone = selected.cloneNode(true);
+      let pos = selected.getAttribute('position');
+      clone.setAttribute('position', `${parseFloat(pos.x)+0.5} ${pos.y} ${parseFloat(pos.z)+0.5}`);
+      clone.addEventListener('click', function (evt) {
+        selectFurniture(clone);
+        evt.stopPropagation();
+      });
+      root.appendChild(clone);
+      selectFurniture(clone);
+    }
+    function removeSelected() {
+      if (selected && !isLocked(selected)) {
+        selected.parentNode.removeChild(selected);
+        selected = null;
+        document.getElementById('selected-info').innerText = '';
+      }
+    }
+    function removeAll() {
+      document.getElementById('furniture-root').innerHTML = '';
+      document.getElementById('room-root').innerHTML = '';
+      selected = null;
+      document.getElementById('selected-info').innerText = '';
+    }
+    function isLocked(entity) {
+      return entity.getAttribute('data-locked') === 'true';
+    }
+    function toggleLock() {
+      if (selected) {
+        let locked = isLocked(selected);
+        selected.setAttribute('data-locked', locked ? 'false' : 'true');
+        selectFurniture(selected);
+      }
+    }
+    function moveLayer(dir) {
+      if (!selected) return;
+      let parent = selected.parentNode;
+      if (dir === 'up' && selected.nextSibling) {
+        parent.insertBefore(selected.nextSibling, selected);
+      } else if (dir === 'down' && selected.previousSibling) {
+        parent.insertBefore(selected, selected.previousSibling);
+      }
+    }
+    // 이름 변경
+    function editName() {
+      if (!selected) return;
+      document.getElementById('modal').style.display = 'flex';
+      document.getElementById('nameInput').value = selected.getAttribute('data-name') || '';
+    }
+    function applyName() {
+      if (selected) {
+        selected.setAttribute('data-name', document.getElementById('nameInput').value);
+        selectFurniture(selected);
+      }
+      closeModal();
+    }
+    function closeModal() {
+      document.getElementById('modal').style.display = 'none';
+    }
+
+    // 씬 저장/불러오기
+    function saveScene() {
+      let arr = [];
+      document.querySelectorAll('.furniture, .room').forEach(e => {
+        arr.push({
+          model: e.getAttribute('gltf-model') || null,
+          geometry: e.getAttribute('geometry') || null,
+          material: e.getAttribute('material') || null,
+          pos: e.getAttribute('position'),
+          scale: e.getAttribute('scale'),
+          rotation: e.getAttribute('rotation'),
+          class: e.className,
+          name: e.getAttribute('data-name'),
+          locked: e.getAttribute('data-locked'),
+          labelId: e.dataset.labelId || null
+        });
+      });
+      localStorage.setItem('furnitureScene', JSON.stringify(arr));
+      alert('저장되었습니다!');
+    }
+    function loadScene() {
+      removeAll();
+      let arr = JSON.parse(localStorage.getItem('furnitureScene') || '[]');
+      arr.forEach(obj => {
+        let root = obj.class.includes('room') ? document.getElementById('room-root') : document.getElementById('furniture-root');
+        let entity = document.createElement('a-entity');
+        if (obj.model) entity.setAttribute('gltf-model', obj.model);
+        if (obj.geometry) entity.setAttribute('geometry', obj.geometry);
+        if (obj.material) entity.setAttribute('material', obj.material);
+        entity.setAttribute('position', `${obj.pos.x} ${obj.pos.y} ${obj.pos.z}`);
+        entity.setAttribute('scale', `${obj.scale.x} ${obj.scale.y} ${obj.scale.z}`);
+        if (obj.rotation) entity.setAttribute('rotation', `${obj.rotation.x} ${obj.rotation.y} ${obj.rotation.z}`);
+        entity.setAttribute('class', obj.class);
+        entity.setAttribute('grab-move-controls', '');
+        entity.setAttribute('clickable', '');
+        if (obj.name) entity.setAttribute('data-name', obj.name);
+        if (obj.locked) entity.setAttribute('data-locked', obj.locked);
+        if (obj.labelId) entity.dataset.labelId = obj.labelId;
+        entity.addEventListener('click', function (evt) {
+          selectFurniture(entity);
+          evt.stopPropagation();
+        });
+        root.appendChild(entity);
+        // 라벨 복원
+        if (obj.name && obj.labelId) showLabel(entity, obj.name);
+      });
+    }
+
+    // 카메라 시점 변경
+    function setTopView() {
+      document.getElementById('mainCamera').setAttribute('position', '0 12 0');
+      document.getElementById('mainCamera').setAttribute('rotation', '-90 0 0');
+    }
+    function setFirstPerson() {
+      document.getElementById('mainCamera').setAttribute('position', '0 1.6 8');
+      document.getElementById('mainCamera').setAttribute('rotation', '0 0 0');
+    }
+
+    // 이미지 캡처
+    function captureScene() {
+      const scene = document.querySelector('a-scene').components.screenshot;
+      if (scene) {
+        document.querySelector('a-scene').components.screenshot.capture('perspective');
+        setTimeout(() => {
+          let img = document.querySelector('a-scene').components.screenshot.getCanvas('perspective').toDataURL('image/png');
+          let a = document.createElement('a');
+          a.href = img;
+          a.download = 'interior.png';
+          a.click();
+        }, 500);
+      } else {
+        alert('캡처 기능을 지원하지 않는 브라우저입니다.');
+      }
+    }
+
+    // 바깥 클릭 시 선택 해제
+    document.querySelector('a-scene').addEventListener('click', function (evt) {
+      if (evt.target.tagName === 'A-SCENE') {
+        if (selected) selected.setAttribute('outline', 'enabled: false');
+        selected = null;
+        document.getElementById('selected-info').innerText = '';
+      }
+    });
+
+    // 이름 더블클릭 시 이름 변경 모달 오픈
+    document.addEventListener('dblclick', function(e) {
+      if (selected) editName();
+    });
+
+    function opacitySelected(val) {
+      if (selected && !isLocked(selected)) {
+        let mat = selected.getAttribute('material') || '';
+        let color = mat.match(/color: ([^;]+)/)?.[1] || '#fff';
+        selected.setAttribute('material', `color: ${color}; opacity: ${val}; transparent: ${val<1}`);
+        document.getElementById('opacityValue').innerText = parseFloat(val).toFixed(2);
+      }
+    }
+    function rotateXSelected(val) {
+      if (selected && !isLocked(selected)) {
+        let rot = selected.getAttribute('rotation');
+        selected.setAttribute('rotation', `${val} ${rot.y} ${rot.z}`);
+        document.getElementById('rotXValue').innerText = `${val}°`;
+      }
+    }
+    function rotateZSelected(val) {
+      if (selected && !isLocked(selected)) {
+        let rot = selected.getAttribute('rotation');
+        selected.setAttribute('rotation', `${rot.x} ${rot.y} ${val}`);
+        document.getElementById('rotZValue').innerText = `${val}°`;
+      }
+    }
+    function changeFloorTexture(val) {
+      const plane = document.querySelector('a-plane');
+      if (val.startsWith('http')) {
+        plane.setAttribute('src', val);
+        plane.setAttribute('color', '#fff');
+      } else {
+        plane.removeAttribute('src');
+        plane.setAttribute('color', val);
+      }
+    }
+    function changeWallTexture(val) {
+      document.querySelectorAll('.room').forEach(e => {
+        if (val.startsWith('http')) {
+          e.setAttribute('material', `src: ${val}; color: #fff; opacity: 1;`);
+        } else {
+          e.setAttribute('material', `color: ${val}; opacity: 1;`);
+        }
+      });
+    }
+    function changeLightColor(val) {
+      document.querySelectorAll('a-light[type="ambient"], a-light[type="directional"]').forEach(l => {
+        l.setAttribute('color', val);
+      });
+    }
+    function changeLightIntensity(val) {
+      document.querySelectorAll('a-light[type="ambient"], a-light[type="directional"]').forEach(l => {
+        l.setAttribute('intensity', val);
+      });
+      document.getElementById('lightIntensityValue').innerText = parseFloat(val).toFixed(2);
+    }
+    // Undo/Redo 기능
+    let undoStack = [], redoStack = [];
+    function pushUndo() {
+      const sceneData = localStorage.getItem('furnitureScene');
+      if (sceneData) undoStack.push(sceneData);
+      if (undoStack.length > 30) undoStack.shift();
+      redoStack = [];
+    }
+    function undo() {
+      if (undoStack.length === 0) return;
+      redoStack.push(localStorage.getItem('furnitureScene'));
+      const prev = undoStack.pop();
+      if (prev) {
+        localStorage.setItem('furnitureScene', prev);
+        loadScene();
+      }
+    }
+    function redo() {
+      if (redoStack.length === 0) return;
+      pushUndo();
+      const next = redoStack.pop();
+      if (next) {
+        localStorage.setItem('furnitureScene', next);
+        loadScene();
+      }
+    }
+    // 주요 변경 시 pushUndo 호출
+    [addFurniture, addRoomElement, removeSelected, removeAll, cloneSelected].forEach(fn => {
+      const orig = fn;
+      window[fn.name] = function(...args) {
+        pushUndo();
+        return orig.apply(this, args);
+      }
+    });
+
+    // 툴바 접기/펼치기 기능
+    let isCollapsed = false;
+    function toggleToolbar() {
+      const ui = document.getElementById('ui');
+      const btn = document.getElementById('collapseBtn');
+      isCollapsed = !isCollapsed;
+      if (isCollapsed) {
+        ui.classList.add('collapsed');
+        btn.title = '툴바 펼치기';
+      } else {
+        ui.classList.remove('collapsed');
+        btn.title = '툴바 접기';
+      }
+    }
+
+    // Orbit Controls(자유 카메라) 모드 전환
+    let isOrbit = false;
+    function toggleOrbitCamera() {
+      const cam = document.getElementById('mainCamera');
+      const btn = document.getElementById('orbitBtn');
+      if (!isOrbit) {
+        cam.removeAttribute('look-controls');
+        cam.removeAttribute('wasd-controls');
+        cam.setAttribute('orbit-controls', 'target: 0 1 0; enableDamping: true; dampingFactor: 0.125; rotateSpeed:0.3; minDistance:3; maxDistance:30;');
+        btn.innerText = '1인칭 카메라';
+        isOrbit = true;
+      } else {
+        cam.removeAttribute('orbit-controls');
+        cam.setAttribute('look-controls', '');
+        cam.setAttribute('wasd-controls', '');
+        setFirstPerson();
+        btn.innerText = '자유 카메라';
+        isOrbit = false;
+      }
+    }
+  </script>
+</body>
+</html>
